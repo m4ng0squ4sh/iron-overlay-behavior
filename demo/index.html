@@ -40,8 +40,8 @@ subject to an additional IP rights grant found at http://polymer.github.io/PATEN
   <h3>An element with <code>IronOverlayBehavior</code> can be opened, closed, toggled.</h3>
   <demo-snippet>
     <template>
-      <button onclick="plain.open()">Plain overlay</button>
-      <simple-overlay id="plain" tabindex=-1>
+      <button onclick="plain.open();event.stopPropagation()">Plain overlay</button>
+      <simple-overlay id="plain" tabindex=-1 always-on-top>
         <h2>Hello world!</h2>
         <p>This can be closed by pressing the ESC key too.</p>
         <button onclick="plain.close()">Close</button>
@@ -52,8 +52,8 @@ subject to an additional IP rights grant found at http://polymer.github.io/PATEN
   <h3>Use <code>with-backdrop</code> to add a backdrop to your overlay. Tabbing will be trapped within the overlay.</h3>
   <demo-snippet>
     <template>
-      <button onclick="backdrop.open()">Overlay with backdrop</button>
-      <simple-overlay id="backdrop" with-backdrop>
+      <button onclick="backdrop.open();event.stopPropagation()">Overlay with backdrop</button>
+      <simple-overlay id="backdrop" with-backdrop always-on-top>
         <p>Hello world!</p>
         <button>Button</button>
         <button onclick="backdrop.close()">Close</button>
@@ -64,7 +64,7 @@ subject to an additional IP rights grant found at http://polymer.github.io/PATEN
   <h3>Use <code>restore-focus-on-close</code> to return the focus to the element that opened the overlay when it gets closed.</h3>
   <demo-snippet>
     <template>
-      <button onclick="returnFocus.open()">Overlay that restores focus</button>
+      <button onclick="returnFocus.open();event.stopPropagation()">Overlay that restores focus</button>
       <simple-overlay id="returnFocus" restore-focus-on-close>
         <p>Hello world!</p>
         <button onclick="returnFocus.close()">Close</button>

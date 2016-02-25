@@ -88,9 +88,19 @@ subject to an additional IP rights grant found at http://polymer.github.io/PATEN
    * track overlays for z-index and focus managemant
    */
   Polymer.IronOverlayManagerClass.prototype.addOverlay = function(overlay) {
+    var onTop = this.currentOverlay();
+    var i;
+    if (onTop && onTop.alwaysOnTop && !overlay.alwaysOnTop &&
+        (onTop.withBackdrop === overlay.withBackdrop || !overlay.withBackdrop)) {
+      i = this._overlays.indexOf(onTop);
+      this._overlays.splice(i, 1);
+    } else {
+      onTop = null;
+    }
     var minimumZ = Math.max(this.currentOverlayZ(), this._minimumZ);
     this._overlays.push(overlay);
     var newZ = this.currentOverlayZ();
+
     if (newZ <= minimumZ) {
       this._applyOverlayZ(overlay, minimumZ);
     }
@@ -100,6 +110,17 @@ subject to an additional IP rights grant found at http://polymer.github.io/PATEN
       element = null;
     }
     this._lastFocusedNodes.push(element);
+
+    // Ensure top overlay stays on top.
+    if (onTop) {
+      minimumZ = this.currentOverlayZ();
+      this._overlays.push(onTop);
+      newZ = this.currentOverlayZ();
+      if (newZ <= minimumZ) {
+        this._applyOverlayZ(onTop, minimumZ);
+      }
+      this._lastFocusedNodes.push(this._lastFocusedNodes.splice(i, 1)[0]);
+    }
   };
 
   Polymer.IronOverlayManagerClass.prototype.removeOverlay = function(overlay) {
@@ -196,7 +217,7 @@ subject to an additional IP rights grant found at http://polymer.github.io/PATEN
   Polymer.IronOverlayManagerClass.prototype._getOverlayZ = function(overlay) {
     var z = this._minimumZ;
     if (overlay) {
-      var z1 = Number(window.getComputedStyle(overlay).zIndex);
+      var z1 = Number(overlay.style.zIndex || window.getComputedStyle(overlay).zIndex);
       // Check if is a number
       // Number.isNaN not supported in IE 10+
       if (z1 === z1) {
