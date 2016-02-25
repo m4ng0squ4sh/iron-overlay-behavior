@@ -18,8 +18,6 @@ subject to an additional IP rights grant found at http://polymer.github.io/PATEN
    */
   Polymer.IronOverlayManagerClass = function() {
     this._overlays = [];
-    // Used to keep track of the last focused node before an overlay gets opened.
-    this._lastFocusedNodes = [];
 
     /**
      * iframes have a default z-index of 100, so this default should be at least
@@ -27,8 +25,6 @@ subject to an additional IP rights grant found at http://polymer.github.io/PATEN
      * @private {number}
      */
     this._minimumZ = 101;
-
-    this._backdrops = [];
 
     this._backdropElement = null;
     Object.defineProperty(this, 'backdropElement', {
@@ -47,41 +43,23 @@ subject to an additional IP rights grant found at http://polymer.github.io/PATEN
     this.deepActiveElement = null;
     Object.defineProperty(this, 'deepActiveElement', {
       get: function() {
-        var active = document.activeElement;
         // document.activeElement can be null
         // https://developer.mozilla.org/en-US/docs/Web/API/Document/activeElement
-        while (active && active.root && Polymer.dom(active.root).activeElement) {
+        // In case of null, default it to document.body.
+        var active = document.activeElement || document.body;
+        while (active.root && Polymer.dom(active.root).activeElement) {
           active = Polymer.dom(active.root).activeElement;
         }
         return active;
       }.bind(this)
     });
-  };
 
-  /**
-   * If a node is contained in an overlay.
-   * @private
-   * @param {Node} node
-   * @returns {Boolean}
-   */
-  Polymer.IronOverlayManagerClass.prototype._isChildOfOverlay = function(node) {
-    while (node && node !== document.body) {
-      // Use logical parentNode, or native ShadowRoot host.
-      node = Polymer.dom(node).parentNode || node.host;
-      // Check if it is an overlay.
-      if (node && node.behaviors && node.behaviors.indexOf(Polymer.IronOverlayBehaviorImpl) !== -1) {
-        return true;
-      }
-    }
-    return false;
-  };
-
-  Polymer.IronOverlayManagerClass.prototype._applyOverlayZ = function(overlay, aboveZ) {
-    this._setZ(overlay, aboveZ + 2);
-  };
-
-  Polymer.IronOverlayManagerClass.prototype._setZ = function(element, z) {
-    element.style.zIndex = z;
+    // Enable document-wide tap recognizer.
+    Polymer.Gestures.add(document, 'tap', null);
+    // We should be using only 'tap', but this would be a breaking change.
+    var tapEvent = ('ontouchstart' in window) ? 'tap' : 'click';
+    document.addEventListener(tapEvent, this._onCaptureClick.bind(this), true);
+    document.addEventListener('focus', this._onCaptureFocus.bind(this), true);
   };
 
   /**
@@ -95,11 +73,7 @@ subject to an additional IP rights grant found at http://polymer.github.io/PATEN
       this._applyOverlayZ(overlay, minimumZ);
     }
     var element = this.deepActiveElement;
-    // If already in other overlay, don't reset focus there.
-    if (this._isChildOfOverlay(element)) {
-      element = null;
-    }
-    this._lastFocusedNodes.push(element);
+    overlay.restoreFocusNode = this._overlayParent(element) ? null : element;
   };
 
   Polymer.IronOverlayManagerClass.prototype.removeOverlay = function(overlay) {
@@ -108,25 +82,22 @@ subject to an additional IP rights grant found at http://polymer.github.io/PATEN
       this._overlays.splice(i, 1);
       this._setZ(overlay, '');
 
-      var node = this._lastFocusedNodes[i];
-      // Focus only if still contained in document.body
-      if (overlay.restoreFocusOnClose && node && Polymer.dom(document.body).deepContains(node)) {
+      var node = overlay.restoreFocusOnClose ? overlay.restoreFocusNode : null;
+      overlay.restoreFocusNode = null;
+      // Focus back only if still contained in document.body
+      if (node && Polymer.dom(document.body).deepContains(node)) {
         node.focus();
       }
-      this._lastFocusedNodes.splice(i, 1);
     }
   };
 
   Polymer.IronOverlayManagerClass.prototype.currentOverlay = function() {
     var i = this._overlays.length - 1;
-    while (this._overlays[i] && !this._overlays[i].opened) {
-      --i;
-    }
     return this._overlays[i];
   };
 
   Polymer.IronOverlayManagerClass.prototype.currentOverlayZ = function() {
-    return this._getOverlayZ(this.currentOverlay());
+    return this._getZ(this.currentOverlay());
   };
 
   /**
@@ -155,28 +126,24 @@ subject to an additional IP rights grant found at http://polymer.github.io/PATEN
   };
 
   Polymer.IronOverlayManagerClass.prototype.trackBackdrop = function(element) {
-    // backdrops contains the overlays with a backdrop that are currently
-    // visible
-    var index = this._backdrops.indexOf(element);
-    if (element.opened && element.withBackdrop) {
-      // no duplicates
-      if (index === -1) {
-        this._backdrops.push(element);
-      }
-    } else if (index >= 0) {
-      this._backdrops.splice(index, 1);
-    }
+    this.backdropElement.style.zIndex = this.backdropZ();
   };
 
   Polymer.IronOverlayManagerClass.prototype.getBackdrops = function() {
-    return this._backdrops;
+    var backdrops = [];
+    for (var i = 0; i < this._overlays.length; i++) {
+      if (this._overlays[i].withBackdrop) {
+        backdrops.push(this._overlays[i]);
+      }
+    }
+    return backdrops;
   };
 
   /**
    * Returns the z-index for the backdrop.
    */
   Polymer.IronOverlayManagerClass.prototype.backdropZ = function() {
-    return this._getOverlayZ(this._overlayWithBackdrop()) - 1;
+    return this._getZ(this._overlayWithBackdrop()) - 1;
   };
 
   /**
@@ -184,7 +151,7 @@ subject to an additional IP rights grant found at http://polymer.github.io/PATEN
    */
   Polymer.IronOverlayManagerClass.prototype._overlayWithBackdrop = function() {
     for (var i = 0; i < this._overlays.length; i++) {
-      if (this._overlays[i].opened && this._overlays[i].withBackdrop) {
+      if (this._overlays[i].withBackdrop) {
         return this._overlays[i];
       }
     }
@@ -193,7 +160,7 @@ subject to an additional IP rights grant found at http://polymer.github.io/PATEN
   /**
    * Calculates the minimum z-index for the overlay.
    */
-  Polymer.IronOverlayManagerClass.prototype._getOverlayZ = function(overlay) {
+  Polymer.IronOverlayManagerClass.prototype._getZ = function(overlay) {
     var z = this._minimumZ;
     if (overlay) {
       var z1 = Number(window.getComputedStyle(overlay).zIndex);
@@ -204,6 +171,56 @@ subject to an additional IP rights grant found at http://polymer.github.io/PATEN
       }
     }
     return z;
+  };
+
+  Polymer.IronOverlayManagerClass.prototype._setZ = function(element, z) {
+    element.style.zIndex = z;
+  };
+
+  Polymer.IronOverlayManagerClass.prototype._applyOverlayZ = function(overlay, aboveZ) {
+    this._setZ(overlay, aboveZ + 2);
+  };
+
+  /**
+   * Returns the overlay containing the provided node. If the node is an overlay,
+   * it returns the node.
+   * @private
+   * @param {Node} node
+   * @returns {?Node} overlay
+   */
+  Polymer.IronOverlayManagerClass.prototype._overlayParent = function(node) {
+    while (node && node !== document.body) {
+      // Check if it is an overlay.
+      if (node.behaviors && node.behaviors.indexOf(Polymer.IronOverlayBehaviorImpl) !== -1) {
+        return node;
+      }
+      // Use logical parentNode, or native ShadowRoot host.
+      node = Polymer.dom(node).parentNode || node.host;
+    }
+  };
+
+  /**
+   * @private
+   * Ensures the click event is delegated to the right overlay.
+   */
+  Polymer.IronOverlayManagerClass.prototype._onCaptureClick = function(event) {
+    var overlay = this.currentOverlay();
+    // Check if clicked outside of any overlay.
+    var target = Polymer.dom(event).rootTarget;
+    if (overlay && this._overlayParent(target) !== overlay) {
+      overlay._onCaptureClick(event);
+    }
+  };
+
+  /**
+   * @private
+   * Ensures the focus event is delegated to the right overlay.
+   */
+  Polymer.IronOverlayManagerClass.prototype._onCaptureFocus = function(event) {
+    var overlay = this.currentOverlay();
+    if (overlay) {
+      overlay._onCaptureFocus(event);
+    }
   };
 
   Polymer.IronOverlayManager = new Polymer.IronOverlayManagerClass();
